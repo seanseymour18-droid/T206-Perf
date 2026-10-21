@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3a5b">
+  <meta name="description" content="Cessna T206H takeoff, climb, and landing performance from airport weather.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="T206 Perf">
+  <title>T206 Performance</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon-192.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #0b3a5b;
+      --ink: #14202b;
+      --muted: #526272;
+      --line: #d5e0ea;
+      --bg: #e7eef4;
+      --card: #ffffff;
+      --warn: #7a4e00;
+      --warn-bg: #fff4d6;
+      --good: #0d6b4c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.4;
+    }
+    header, main { width: min(40rem, 100%); margin: 0 auto; }
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 1.1rem 1rem 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.45rem; letter-spacing: -0.02em; }
+    header p { margin: 0.25rem 0 0; color: #d5e6f2; font-size: 0.95rem; }
+    main { padding: 0.9rem 0.9rem calc(1.4rem + env(safe-area-inset-bottom)); }
+    .offline {
+      display: none;
+      margin-bottom: 0.8rem;
+      padding: 0.7rem 0.85rem;
+      border-radius: 12px;
+      background: var(--warn-bg);
+      color: var(--warn);
+      font-weight: 650;
+    }
+    body[data-offline="true"] .offline { display: block; }
+    section {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 0.95rem;
+      margin-bottom: 0.8rem;
+      box-shadow: 0 1px 2px rgba(20, 32, 43, 0.06);
+    }
+    h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+    label { display: block; font-size: 0.82rem; font-weight: 650; color: var(--muted); margin-bottom: 0.3rem; }
+    input, select, button { font: inherit; color: inherit; }
+    input, select {
+      width: 100%;
+      min-height: 48px;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    input:focus, select:focus, button:focus-visible {
+      outline: 3px solid #9ec3de;
+      outline-offset: 1px;
+    }
+    .lookup { display: flex; gap: 0.5rem; align-items: end; }
+    .lookup .field { flex: 1; }
+    button.primary, button.ghost {
+      min-height: 48px;
+      border-radius: 12px;
+      border: 0;
+      padding: 0 0.9rem;
+      font-weight: 700;
+    }
+    button.primary { background: var(--navy); color: #fff; }
+    button.primary:disabled { opacity: 0.65; }
+    button.ghost { background: #e7eef4; color: var(--navy); margin-top: 0.7rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .span-2 { grid-column: 1 / -1; }
+    .station { font-weight: 700; margin: 0.75rem 0 0.25rem; }
+    .raw {
+      margin: 0.35rem 0 0;
+      font-family: ui-monospace, "Cascadia Mono", monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--muted);
+    }
+    .banner {
+      margin: 0 0 0.75rem;
+      padding: 0.7rem 0.8rem;
+      border-radius: 12px;
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+    .banner:empty, .banner[hidden] { display: none; }
+    .seg { display: flex; gap: 0.25rem; padding: 0.25rem; border-radius: 14px; background: #e7eef4; }
+    .seg button {
+      flex: 1;
+      min-height: 44px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      font-weight: 700;
+      color: #243746;
+    }
+    .seg button[aria-pressed="true"] { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(11, 58, 91, 0.16); }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+    .metric { background: #f3f7fb; border-radius: 12px; padding: 0.75rem; }
+    .metric span, .block h3 { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
+    .metric b, .block strong {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 1.45rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+    }
+    .block { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+    .block h3 { margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .block p { margin: 0.35rem 0 0; }
+    .reason { color: var(--warn); font-weight: 650; }
+    ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+    li { margin: 0.2rem 0; }
+    details { margin-top: 0.8rem; color: var(--muted); }
+    summary { cursor: pointer; font-weight: 700; color: var(--navy); }
+    footer { color: var(--muted); font-size: 0.82rem; }
+    @media (max-width: 380px) {
+      .grid, .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>T206H Performance</h1>
+    <p>Short-field takeoff, climb, and landing</p>
+  </header>
+  <main>
+    <p class="offline">Offline. Saved weather and the charts on this device still work.</p>
+
+    <section>
+      <h2>Airport</h2>
+      <div class="lookup">
+        <div class="field">
+          <label for="ident">Airport code</label>
+          <input id="ident" name="ident" autocapitalize="characters" autocomplete="off" maxlength="4" placeholder="KORD" enterkeyhint="search">
+        </div>
+        <button class="primary" id="fetch-btn" type="button">Get weather</button>
+      </div>
+      <p class="station" id="station"></p>
+      <p class="raw" id="raw"></p>
+      <button class="ghost" id="install-btn" type="button" hidden>Add to Home Screen</button>
+    </section>
+
+    <section>
+      <h2>Weather</h2>
+      <p class="banner" id="banner" hidden></p>
+      <div class="grid">
+        <div>
+          <label for="elev">Field elevation (ft)</label>
+          <input id="elev" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="altimeter">Altimeter (inHg)</label>
+          <input id="altimeter" inputmode="decimal" autocomplete="off" placeholder="29.92">
+        </div>
+        <div>
+          <label for="oat">Temperature (°C)</label>
+          <input id="oat" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="wind-dir">Wind direction (true °)</label>
+          <input id="wind-dir" autocapitalize="characters" autocomplete="off" placeholder="270 or VRB">
+        </div>
+        <div>
+          <label for="wind-spd">Wind speed (kt)</label>
+          <input id="wind-spd" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="gust">Gust (kt)</label>
+          <input id="gust" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Runway and airplane</h2>
+      <div class="grid">
+        <div class="span-2">
+          <label for="runway">Runway</label>
+          <select id="runway">
+            <option value="">Type a heading</option>
+          </select>
+        </div>
+        <div>
+          <label for="heading">Runway heading (magnetic °)</label>
+          <input id="heading" inputmode="numeric" autocomplete="off" placeholder="270">
+        </div>
+        <div>
+          <label for="weight">Weight (lb)</label>
+          <input id="weight" inputmode="decimal" autocomplete="off" value="3600">
+        </div>
+        <div>
+          <label id="surface-label">Surface</label>
+          <div class="seg" role="group" aria-labelledby="surface-label">
+            <button type="button" id="surf-paved" aria-pressed="true">Paved</button>
+            <button type="button" id="surf-grass" aria-pressed="false">Dry grass</button>
+          </div>
+        </div>
+        <div>
+          <label id="flaps-label">Landing flaps</label>
+          <div class="seg" role="group" aria-labelledby="flaps-label">
+            <button type="button" id="flaps-full" aria-pressed="true">Full</button>
+            <button type="button" id="flaps-up" aria-pressed="false">Up</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-live="polite">
+      <h2>Results</h2>
+      <div class="metrics">
+        <div class="metric"><span>Pressure altitude</span><b id="pa">—</b></div>
+        <div class="metric"><span>Density altitude</span><b id="da">—</b></div>
+      </div>
+      <div class="block">
+        <h3>Wind</h3>
+        <p id="wind-out">Enter the wind and a runway heading.</p>
+      </div>
+      <div class="block">
+        <h3>Takeoff</h3>
+        <div class="metrics">
+          <div class="metric"><span>Ground roll</span><b id="to-gr">—</b></div>
+          <div class="metric"><span>Clear 50 ft</span><b id="to-tot">—</b></div>
+        </div>
+        <p id="to-meta"></p>
+      </div>
+      <div class="block">
+        <h3>Climb</h3>
+        <div class="metrics">
+          <div class="metric"><span>Rate of climb</span><b id="cl-fpm">—</b></div>
+          <div class="metric"><span>Climb speed</span><b id="cl-kias">—</b></div>
+        </div>
+        <p id="cl-meta"></p>
+      </div>
+      <div class="block">
+        <h3>Landing</h3>
+        <div class="metrics">
+          <div class="metric"><span>Ground roll</span><b id="ld-gr">—</b></div>
+          <div class="metric"><span>Clear 50 ft</span><b id="ld-tot">—</b></div>
+        </div>
+        <p id="ld-meta"></p>
+      </div>
+      <ul id="notes"></ul>
+      <details>
+        <summary>Chart conditions</summary>
+        <p>Takeoff is Figure 5-6: flaps 20°, 2500 RPM, 39 in Hg, mixture 34 GPH before brake release, cowl flaps open. Climb is Figure 5-7: flaps up, maximum continuous power. Landing is Figure 5-12 at 3600 lb: flaps full, idle, maximum braking, 64 KIAS at 50 ft. Distances are read from pressure altitude and outside air temperature.</p>
+      </details>
+    </section>
+
+    <footer>
+      Figures 5-6, 5-7, and 5-12 from the Cessna T206H NAV III POH. Planning reference only. Confirm with the current POH before flight. This is not a substitute for the aircraft flight manual.
+    </footer>
+  </main>
+  <script>
+    const DIST_TEMPS = [0, 10, 20, 30, 40];
+    const DIST_ALTS = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000];
+    const CLIMB_TEMPS = [-20, 0, 20, 40];
+    const CLIMB_ALTS = [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 20000, 24000];
+    const WEIGHTS = [3000, 3300, 3600];
+
+    const TAKEOFF = {
+      3000: [
+        [[545, 1100], [585, 1175], [625, 1250], [670, 1330], [715, 1410]],
+        [[580, 1160], [625, 1240], [665, 1320], [715, 1405], [760, 1490]],
+        [[620, 1230], [665, 1310], [710, 1395], [760, 1485], [810, 1580]],
+        [[660, 1300], [710, 1385], [760, 1475], [810, 1570], [865, 1675]],
+        [[705, 1375], [755, 1465], [810, 1565], [865, 1665], [925, 1770]],
+        [[750, 1455], [805, 1555], [865, 1655], [925, 1765], [990, 1885]],
+        [[805, 1540], [860, 1645], [925, 1760], [995, 1880], [1060, 2010]],
+        [[860, 1640], [925, 1755], [995, 1880], [1065, 2005], [1140, 2140]],
+        [[925, 1745], [995, 1870], [1070, 2005], [1145, 2140], [1225, 2280]]
+      ],
+      3300: [
+        [[675, 1320], [725, 1410], [775, 1505], [830, 1600], [885, 1705]],
+        [[720, 1395], [770, 1490], [825, 1590], [885, 1695], [945, 1805]],
+        [[765, 1475], [825, 1580], [880, 1685], [945, 1795], [1010, 1915]],
+        [[820, 1565], [880, 1670], [940, 1785], [1005, 1905], [1075, 2030]],
+        [[875, 1655], [935, 1770], [1005, 1895], [1075, 2020], [1145, 2150]],
+        [[930, 1755], [1000, 1880], [1070, 2005], [1145, 2140], [1225, 2290]],
+        [[995, 1865], [1070, 1995], [1150, 2135], [1230, 2285], [1320, 2445]],
+        [[1065, 1985], [1150, 2130], [1235, 2280], [1325, 2440], [1420, 2610]],
+        [[1145, 2115], [1235, 2270], [1325, 2435], [1425, 2605], [1525, 2785]]
+      ],
+      3600: [
+        [[825, 1575], [885, 1685], [945, 1800], [1015, 1920], [1085, 2050]],
+        [[875, 1665], [940, 1785], [1010, 1905], [1080, 2035], [1155, 2170]],
+        [[935, 1765], [1005, 1890], [1075, 2020], [1150, 2160], [1230, 2305]],
+        [[1000, 1870], [1070, 2005], [1150, 2145], [1230, 2290], [1315, 2445]],
+        [[1065, 1985], [1145, 2125], [1225, 2275], [1310, 2430], [1400, 2595]],
+        [[1135, 2105], [1220, 2255], [1310, 2415], [1400, 2580], [1500, 2765]],
+        [[1215, 2235], [1305, 2395], [1405, 2570], [1505, 2760], [1615, 2955]],
+        [[1300, 2380], [1405, 2560], [1510, 2750], [1620, 2950], [1735, 3160]],
+        [[1400, 2545], [1510, 2735], [1625, 2940], [1740, 3155], [1865, 3380]]
+      ]
+    };
+
+    const TAKEOFF_SPEED = {
+      3000: [57, 67],
+      3300: [61, 71],
+      3600: [64, 74]
+    };
+
+    const CLIMB = {
+      3000: [
+        [83, 1695, 1530, 1370, 1205],
+        [83, 1615, 1455, 1290, 1130],
+        [83, 1540, 1385, 1225, 1060],
+        [83, 1460, 1310, 1155, 990],
+        [83, 1385, 1235, 1085, 925],
+        [83, 1315, 1170, 1015, 865],
+        [83, 1240, 1095, 950, 805],
+        [83, 1170, 1030, 890, 750],
+        [83, 1105, 970, 835, 700],
+        [77, 840, 720, 605, 485],
+        [75, 525, 415, 310, 210]
+      ],
+      3300: [
+        [85, 1485, 1330, 1180, 1025],
+        [85, 1410, 1260, 1105, 950],
+        [85, 1340, 1190, 1040, 885],
+        [85, 1265, 1120, 970, 815],
+        [85, 1195, 1050, 900, 750],
+        [85, 1130, 985, 840, 695],
+        [85, 1060, 915, 775, 635],
+        [85, 990, 850, 715, 580],
+        [85, 925, 790, 660, 530],
+        [79, 670, 550, 435, 325],
+        [77, 370, 260, 155, null]
+      ],
+      3600: [
+        [87, 1305, 1160, 1015, 865],
+        [87, 1235, 1090, 945, 795],
+        [87, 1170, 1025, 880, 730],
+        [87, 1100, 995, 810, 660],
+        [87, 1030, 890, 745, 600],
+        [87, 970, 825, 685, 545],
+        [87, 900, 760, 625, 485],
+        [87, 830, 695, 560, 430],
+        [87, 765, 635, 510, 385],
+        [81, 515, 400, 285, 175],
+        [79, 230, 120, null, null]
+      ]
+    };
+
+    /* Figure 5-12. The 1,000 ft / 30°C total is the printed 1,790 ft. */
+    const LANDING = [
+      [[695, 1340], [720, 1375], [750, 1415], [775, 1450], [800, 1490]],
+      [[720, 1375], [750, 1415], [775, 1450], [800, 1790], [830, 1530]],
+      [[750, 1415], [775, 1455], [805, 1495], [830, 1530], [860, 1575]],
+      [[775, 1455], [805, 1495], [835, 1540], [865, 1580], [890, 1615]],
+      [[805, 1495], [835, 1540], [865, 1580], [895, 1625], [925, 1665]],
+      [[835, 1540], [870, 1585], [900, 1630], [930, 1675], [960, 1715]],
+      [[870, 1590], [900, 1630], [935, 1680], [965, 1725], [995, 1770]],
+      [[905, 1635], [935, 1680], [970, 1730], [1000, 1775], [1035, 1825]],
+      [[940, 1690], [970, 1730], [1005, 1780], [1040, 1830], [1075, 1880]]
+    ];
+
+    const STORAGE_KEY = "t206-perf-state";
+
+    function roundTo(value, step) {
+      return Math.round(value / step) * step;
+    }
+
+    function norm360(deg) {
+      return ((deg % 360) + 360) % 360;
+    }
+
+    function norm180(deg) {
+      const full = norm360(deg);
+      return full > 180 ? full - 360 : full;
+    }
+
+    function heading360(deg) {
+      const full = norm360(deg);
+      return full === 0 ? 360 : full;
+    }
+
+    function locate(grid, value) {
+      if (value < grid[0] || value > grid[grid.length - 1]) return null;
+      for (let index = 0; index < grid.length - 1; index += 1) {
+        if (value <= grid[index + 1]) {
+          const span = grid[index + 1] - grid[index];
+          return { index: index, t: span === 0 ? 0 : (value - grid[index]) / span };
+        }
+      }
+      return null;
+    }
+
+    function blend(locateResult, read) {
+      if (!locateResult) return { outside: true, value: null };
+      const near = read(locateResult.index);
+      const far = read(locateResult.index + 1);
+      if (locateResult.t === 0) return { outside: false, value: near };
+      if (locateResult.t === 1) return { outside: false, value: far };
+      if (near == null || far == null) return { outside: false, value: null };
+      return { outside: false, value: near + (far - near) * locateResult.t };
+    }
+
+    function sampleGrid(table, alts, temps, pressureAlt, temperature, pick) {
+      const altitude = locate(alts, pressureAlt);
+      const temp = locate(temps, temperature);
+      if (!altitude || !temp) return { outside: true, value: null };
+      const alongTemp = blend(temp, (tempIndex) => pick(table[altitude.index][tempIndex]));
+      if (altitude.t === 0) return alongTemp;
+      const alongTempFar = blend(temp, (tempIndex) => pick(table[altitude.index + 1][tempIndex]));
+      if (altitude.t === 1) return alongTempFar;
+      if (alongTemp.value == null || alongTempFar.value == null) return { outside: false, value: null };
+      return { outside: false, value: alongTemp.value + (alongTempFar.value - alongTemp.value) * altitude.t };
+    }
+
+    function sampleWeight(weight, readWeight) {
+      const place = locate(WEIGHTS, weight);
+      if (!place) return { outside: true, value: null };
+      return blend(place, (index) => readWeight(WEIGHTS[index]));
+    }
+
+    function windFactor(headwindKt) {
+      if (headwindKt >= 0) return { factor: 1 - 0.01 * headwindKt, tailwindLimit: false };
+      const tailwind = -headwindKt;
+      if (tailwind > 10) return { factor: null, tailwindLimit: true };
+      return { factor: 1 + 0.04 * tailwind, tailwindLimit: false };
+    }
+
+    function components(direction, speed, runway, magVarEast) {
+      let magnetic = direction;
+      let variationApplied = false;
+      if (magVarEast != null) {
+        magnetic = norm360(direction - magVarEast);
+        variationApplied = true;
+      }
+      const relative = norm180(magnetic - runway);
+      const radians = relative * Math.PI / 180;
+      return {
+        variationApplied: variationApplied,
+        magnetic: heading360(magnetic),
+        headwind: speed * Math.cos(radians),
+        crosswind: speed * Math.sin(radians)
+      };
+    }
+
+    function correctDistance(ground, total, factor, surface, kind, flapsUp, zeroWindOnly) {
+      const notes = [];
+      let groundRoll = ground;
+      let distance = total;
+      if (zeroWindOnly) {
+        notes.push("Tailwind is above 10 kt, so this is the zero-wind chart value. The notes do not publish a larger factor.");
+      } else if (factor != null && Math.abs(factor - 1) > 0.0005) {
+        groundRoll *= factor;
+        distance *= factor;
+        if (factor < 1) {
+          notes.push("Headwind correction " + Math.round((1 - factor) * 1000) / 10 + "% less, from 10% per 10 kt.");
+        } else {
+          notes.push("Tailwind correction " + Math.round((factor - 1) * 1000) / 10 + "% more, from 10% per 2.5 kt.");
+        }
+      }
+      if (!zeroWindOnly && surface === "grass") {
+        const portion = kind === "takeoff" ? 0.15 : 0.4;
+        const added = groundRoll * portion;
+        groundRoll += added;
+        distance += added;
+        notes.push("Dry grass adds " + Math.round(portion * 100) + "% of the ground roll to both distances.");
+      }
+      if (!zeroWindOnly && kind === "landing" && flapsUp) {
+        groundRoll *= 1.45;
+        distance *= 1.45;
+        notes.push("Flaps up adds 45% to both distances. Approach at 73 KIAS.");
+      }
+      return {
+        ground: roundTo(groundRoll, 5),
+        total: roundTo(distance, 5),
+        notes: notes
+      };
+    }
+
+    function performance(input) {
+      const result = {
+        pressureAlt: null,
+        densityAlt: null,
+        wind: null,
+        takeoff: emptyDistance("Enter elevation, altimeter, temperature, and weight."),
+        climb: emptyClimb("Enter elevation, altimeter, temperature, and weight."),
+        landing: emptyDistance("Enter elevation, altimeter, and temperature.")
+      };
+
+      if (input.elevationFt == null || input.altimeterInHg == null) return result;
+      const pressureAlt = input.elevationFt + (29.92 - input.altimeterInHg) * 1000;
+      result.pressureAlt = Math.round(pressureAlt);
+      if (input.oatC == null) return result;
+      const isa = 15 - 1.98 * (pressureAlt / 1000);
+      result.densityAlt = Math.round(pressureAlt + 120 * (input.oatC - isa));
+
+      const wind = resolveWind(input);
+      result.wind = wind;
+
+      const takeoffOutside = pressureAlt < DIST_ALTS[0] || pressureAlt > DIST_ALTS[DIST_ALTS.length - 1]
+        || input.oatC < DIST_TEMPS[0] || input.oatC > DIST_TEMPS[DIST_TEMPS.length - 1];
+      const weightOutside = input.weightLb == null || input.weightLb < WEIGHTS[0] || input.weightLb > WEIGHTS[WEIGHTS.length - 1];
+
+      if (input.weightLb == null) {
+        result.takeoff.reason = "Enter the airplane weight.";
+        result.climb.reason = "Enter the airplane weight.";
+      } else if (weightOutside) {
+        result.takeoff.reason = "Takeoff charts cover 3,000 to 3,600 lb.";
+        result.climb.reason = "Climb charts cover 3,000 to 3,600 lb.";
+      } else if (takeoffOutside) {
+        result.takeoff.reason = "Takeoff chart covers sea level to 8,000 ft pressure altitude and 0 to 40°C.";
+      } else {
+        const ground = sampleWeight(input.weightLb, (weight) => sampleGrid(
+          TAKEOFF[weight], DIST_ALTS, DIST_TEMPS, pressureAlt, input.oatC, (cell) => cell[0]
+        ).value);
+        const total = sampleWeight(input.weightLb, (weight) => sampleGrid(
+          TAKEOFF[weight], DIST_ALTS, DIST_TEMPS, pressureAlt, input.oatC, (cell) => cell[1]
+        ).value);
+        const liftoff = sampleWeight(input.weightLb, (weight) => TAKEOFF_SPEED[weight][0]);
+        const over50 = sampleWeight(input.weightLb, (weight) => TAKEOFF_SPEED[weight][1]);
+        const corrected = correctDistance(ground.value, total.value, wind.factor, input.surface, "takeoff", false, wind.tailwindLimit);
+        result.takeoff = {
+          available: true,
+          reason: null,
+          ground: corrected.ground,
+          total: corrected.total,
+          liftoff: Math.round(liftoff.value),
+          over50: Math.round(over50.value),
+          notes: corrected.notes
+        };
+      }
+
+      const climbOutside = pressureAlt < CLIMB_ALTS[0] || pressureAlt > CLIMB_ALTS[CLIMB_ALTS.length - 1]
+        || input.oatC < CLIMB_TEMPS[0] || input.oatC > CLIMB_TEMPS[CLIMB_TEMPS.length - 1];
+      if (input.weightLb != null && !weightOutside && climbOutside) {
+        result.climb.reason = "Climb chart covers sea level to 24,000 ft pressure altitude and -20 to 40°C.";
+      } else if (input.weightLb != null && !weightOutside) {
+        const rateValue = climbRate(input.weightLb, pressureAlt, input.oatC);
+        const speedValue = climbSpeed(input.weightLb, pressureAlt, input.oatC);
+        if (rateValue == null) {
+          result.climb = {
+            available: false,
+            reason: "The climb chart does not publish a rate for this pressure altitude and temperature.",
+            fpm: null,
+            kias: speedValue == null ? null : Math.round(speedValue),
+            notes: []
+          };
+        } else {
+          result.climb = {
+            available: true,
+            reason: null,
+            fpm: roundTo(rateValue, 5),
+            kias: speedValue == null ? null : Math.round(speedValue),
+            notes: ["Flaps up, maximum continuous power."]
+          };
+        }
+      }
+
+      if (takeoffOutside) {
+        result.landing.reason = "Landing chart covers sea level to 8,000 ft pressure altitude and 0 to 40°C.";
+      } else {
+        const ground = sampleGrid(LANDING, DIST_ALTS, DIST_TEMPS, pressureAlt, input.oatC, (cell) => cell[0]);
+        const total = sampleGrid(LANDING, DIST_ALTS, DIST_TEMPS, pressureAlt, input.oatC, (cell) => cell[1]);
+        const corrected = correctDistance(ground.value, total.value, wind.factor, input.surface, "landing", input.flapsUp, wind.tailwindLimit);
+        const notes = corrected.notes.slice();
+        notes.unshift("Published at 3,600 lb" + (input.weightLb != null && input.weightLb !== 3600 ? ". Not adjusted for the entered weight." : "."));
+        if (!input.flapsUp) notes.push("Flaps full, 64 KIAS at 50 ft.");
+        result.landing = {
+          available: true,
+          reason: null,
+          ground: corrected.ground,
+          total: corrected.total,
+          speed: input.flapsUp ? 73 : 64,
+          notes: notes
+        };
+      }
+
+      return result;
+    }
+
+    function cornerBlend(altitude, temp, read) {
+      const points = [
+        [altitude.index, temp.index, (1 - altitude.t) * (1 - temp.t)],
+        [altitude.index, temp.index + 1, (1 - altitude.t) * temp.t],
+        [altitude.index + 1, temp.index, altitude.t * (1 - temp.t)],
+        [altitude.index + 1, temp.index + 1, altitude.t * temp.t]
+      ].filter((point) => point[2] > 1e-12);
+      if (points.some((point) => read(point[0], point[1]) == null)) return null;
+      return points.reduce((sum, point) => sum + read(point[0], point[1]) * point[2], 0);
+    }
+
+    function climbNumber(weight, pressureAlt, temperature, readRow) {
+      const altitude = locate(CLIMB_ALTS, pressureAlt);
+      const temp = locate(CLIMB_TEMPS, temperature);
+      if (!altitude || !temp) return null;
+      return sampleWeight(weight, (chartWeight) => cornerBlend(
+        altitude,
+        temp,
+        (altIndex, tempIndex) => readRow(CLIMB[chartWeight][altIndex], tempIndex)
+      )).value;
+    }
+
+    function climbRate(weight, pressureAlt, temperature) {
+      return climbNumber(weight, pressureAlt, temperature, (row, tempIndex) => row[tempIndex + 1]);
+    }
+
+    function climbSpeed(weight, pressureAlt, temperature) {
+      return climbNumber(weight, pressureAlt, temperature, (row) => row[0]);
+    }
+
+    function emptyDistance(reason) {
+      return { available: false, reason: reason, ground: null, total: null, notes: [] };
+    }
+
+    function emptyClimb(reason) {
+      return { available: false, reason: reason, fpm: null, kias: null, notes: [] };
+    }
+
+    function resolveWind(input) {
+      const calm = {
+        factor: 1,
+        tailwindLimit: false,
+        headwind: 0,
+        crosswind: 0,
+        gustHeadwind: null,
+        gustCrosswind: null,
+        magnetic: null,
+        variationApplied: false,
+        variable: false,
+        text: []
+      };
+      if (input.windVariable) {
+        return Object.assign({}, calm, {
+          factor: null,
+          tailwindLimit: false,
+          headwind: null,
+          crosswind: null,
+          text: ["Wind is variable, so distances stay on the zero-wind chart."]
+        });
+      }
+      if (input.windSpeedKt == null) {
+        return Object.assign({}, calm, {
+          headwind: null,
+          crosswind: null,
+          text: ["Wind speed is blank, so distances are the zero-wind chart values."]
+        });
+      }
+      if (input.windSpeedKt === 0) return Object.assign({}, calm, { text: ["Calm wind."] });
+      if (input.windDir == null || input.runwayHeading == null) {
+        return Object.assign({}, calm, {
+          headwind: null,
+          crosswind: null,
+          text: ["Enter wind direction and runway heading to apply the wind correction. Distances shown are zero wind."]
+        });
+      }
+      const steady = components(input.windDir, input.windSpeedKt, input.runwayHeading, input.magVarEast);
+      const factor = windFactor(steady.headwind);
+      let gust = null;
+      if (input.gustKt != null && input.gustKt > input.windSpeedKt) {
+        gust = components(input.windDir, input.gustKt, input.runwayHeading, input.magVarEast);
+      }
+      const text = [];
+      if (steady.variationApplied) {
+        text.push("True wind converted with magnetic variation. Magnetic wind " + steady.magnetic + "°.");
+      } else if (input.magVarEast == null) {
+        text.push("Magnetic variation is unavailable, so the entered wind direction is compared directly with the runway heading.");
+      }
+      if (factor.tailwindLimit) text.push("Tailwind exceeds the 10 kt limit in the chart notes.");
+      return {
+        factor: factor.tailwindLimit ? null : factor.factor,
+        tailwindLimit: factor.tailwindLimit,
+        headwind: steady.headwind,
+        crosswind: steady.crosswind,
+        gustHeadwind: gust ? gust.headwind : null,
+        gustCrosswind: gust ? gust.crosswind : null,
+        magnetic: steady.magnetic,
+        variationApplied: steady.variationApplied,
+        variable: false,
+        text: text
+      };
+    }
+
+    function selfCheck() {
+      const failures = [];
+      function expect(name, actual, expected) {
+        if (actual !== expected) failures.push(name + " got " + actual + " expected " + expected);
+      }
+      const base = {
+        elevationFt: 0,
+        altimeterInHg: 29.92,
+        oatC: 0,
+        windDir: 360,
+        windVariable: false,
+        windSpeedKt: 0,
+        gustKt: null,
+        runwayHeading: 360,
+        magVarEast: null,
+        surface: "paved",
+        weightLb: 3600,
+        flapsUp: false
+      };
+      let result = performance(base);
+      expect("to ground", result.takeoff.ground, 825);
+      expect("to total", result.takeoff.total, 1575);
+      expect("climb", result.climb.fpm, 1160);
+      expect("kias", result.climb.kias, 87);
+      expect("ld ground", result.landing.ground, 695);
+      expect("ld total", result.landing.total, 1340);
+      expect("pa0", result.pressureAlt, 0);
+      expect("da cold", result.densityAlt, -1800);
+
+      result = performance(Object.assign({}, base, { oatC: 15 }));
+      expect("da standard", result.densityAlt, 0);
+
+      result = performance(Object.assign({}, base, { elevationFt: 1000, oatC: 15 }));
+      expect("pa 1000", result.pressureAlt, 1000);
+      expect("da 1000", result.densityAlt, 1238);
+
+      result = performance(Object.assign({}, base, { elevationFt: 680, altimeterInHg: 30.2 }));
+      expect("pa high", result.pressureAlt, 400);
+
+      result = performance(Object.assign({}, base, { elevationFt: 500, oatC: 5 }));
+      expect("mid ground", result.takeoff.ground, 880);
+      expect("mid total", result.takeoff.total, 1680);
+
+      result = performance(Object.assign({}, base, { windSpeedKt: 10 }));
+      expect("hw ground", result.takeoff.ground, 745);
+      expect("hw total", result.takeoff.total, 1420);
+
+      result = performance(Object.assign({}, base, { windDir: 180, windSpeedKt: 12 }));
+      expect("tw limit ground", result.takeoff.ground, 825);
+      expect("tw limit flag", result.wind.tailwindLimit, true);
+
+      result = performance(Object.assign({}, base, { weightLb: 3450 }));
+      expect("wt ground", result.takeoff.ground, 750);
+      expect("wt total", result.takeoff.total, 1450);
+      expect("wt climb", result.climb.fpm, 1245);
+      expect("wt kias", result.climb.kias, 86);
+
+      result = performance(Object.assign({}, base, { elevationFt: 1000, oatC: 30 }));
+      expect("cell 1790", result.landing.total, 1790);
+      expect("cell 800", result.landing.ground, 800);
+
+      result = performance(Object.assign({}, base, { surface: "grass" }));
+      expect("grass to", result.takeoff.ground, 950);
+      expect("grass tot", result.takeoff.total, 1700);
+      expect("grass ld", result.landing.ground, 975);
+      expect("grass ldt", result.landing.total, 1620);
+
+      result = performance(Object.assign({}, base, { flapsUp: true }));
+      expect("flaps ground", result.landing.ground, 1010);
+      expect("flaps total", result.landing.total, 1945);
+
+      result = performance(Object.assign({}, base, { windSpeedKt: 10, surface: "grass" }));
+      expect("hw grass", result.takeoff.ground, 855);
+      expect("hw grass tot", result.takeoff.total, 1530);
+
+      result = performance(Object.assign({}, base, { surface: "grass", flapsUp: true }));
+      expect("grass flaps", result.landing.ground, 1410);
+      expect("grass flaps tot", result.landing.total, 2345);
+
+      result = performance(Object.assign({}, base, { elevationFt: 24000, oatC: 20 }));
+      expect("no climb", result.climb.available, false);
+      expect("climb speed remains", result.climb.kias, 79);
+
+      result = performance(Object.assign({}, base, { oatC: -5 }));
+      expect("climb interp", result.climb.fpm, 1195);
+      expect("to blocked", result.takeoff.available, false);
+
+      result = performance(Object.assign({}, base, { windDir: 90, windSpeedKt: 10 }));
+      expect("xwind dist", result.takeoff.ground, 825);
+      expect("xwind side", Math.round(result.wind.crosswind), 10);
+
+      result = performance(Object.assign({}, base, { windSpeedKt: 10, magVarEast: 10 }));
+      expect("mag ground", result.takeoff.ground, 745);
+      expect("mag wind", result.wind.magnetic, 350);
+
+      result = performance(Object.assign({}, base, { weightLb: 2900 }));
+      expect("light blocked", result.takeoff.available, false);
+      expect("landing still", result.landing.available, true);
+
+      return { pass: failures.length === 0, failures: failures };
+    }
+
+    const els = {
+      ident: document.getElementById("ident"),
+      fetchBtn: document.getElementById("fetch-btn"),
+      station: document.getElementById("station"),
+      raw: document.getElementById("raw"),
+      banner: document.getElementById("banner"),
+      elev: document.getElementById("elev"),
+      altimeter: document.getElementById("altimeter"),
+      oat: document.getElementById("oat"),
+      windDir: document.getElementById("wind-dir"),
+      windSpd: document.getElementById("wind-spd"),
+      gust: document.getElementById("gust"),
+      runway: document.getElementById("runway"),
+      heading: document.getElementById("heading"),
+      weight: document.getElementById("weight"),
+      paved: document.getElementById("surf-paved"),
+      grass: document.getElementById("surf-grass"),
+      flapsFull: document.getElementById("flaps-full"),
+      flapsUp: document.getElementById("flaps-up"),
+      pa: document.getElementById("pa"),
+      da: document.getElementById("da"),
+      windOut: document.getElementById("wind-out"),
+      toGr: document.getElementById("to-gr"),
+      toTot: document.getElementById("to-tot"),
+      toMeta: document.getElementById("to-meta"),
+      clFpm: document.getElementById("cl-fpm"),
+      clKias: document.getElementById("cl-kias"),
+      clMeta: document.getElementById("cl-meta"),
+      ldGr: document.getElementById("ld-gr"),
+      ldTot: document.getElementById("ld-tot"),
+      ldMeta: document.getElementById("ld-meta"),
+      notes: document.getElementById("notes"),
+      installBtn: document.getElementById("install-btn")
+    };
+
+    let airportState = { magVarEast: null, runways: [], fetchedIdent: "" };
+    let saveReady = false;
+    let installEvent = null;
+
+    function numberOrNull(value) {
+      if (value == null) return null;
+      const text = String(value).trim();
+      if (text === "") return null;
+      const number = Number(text);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function feetText(value) {
+      return value.toLocaleString("en-US") + " ft";
+    }
+
+    function sideText(crosswind) {
+      const knots = Math.round(Math.abs(crosswind) * 10) / 10;
+      if (knots < 0.5) return "no crosswind";
+      const shown = Number.isInteger(knots) ? String(knots) : knots.toFixed(1);
+      return shown + " kt from the " + (crosswind > 0 ? "right" : "left");
+    }
+
+    function headText(headwind) {
+      const knots = Math.round(Math.abs(headwind) * 10) / 10;
+      const shown = Number.isInteger(knots) ? String(knots) : knots.toFixed(1);
+      return (headwind >= 0 ? "Headwind " : "Tailwind ") + shown + " kt";
+    }
+
+    function setPressed(button, pressed) {
+      button.setAttribute("aria-pressed", pressed ? "true" : "false");
+    }
+
+    function surface() {
+      return els.grass.getAttribute("aria-pressed") === "true" ? "grass" : "paved";
+    }
+
+    function flapsUp() {
+      return els.flapsUp.getAttribute("aria-pressed") === "true";
+    }
+
+    function readInput() {
+      const windText = els.windDir.value.trim().toUpperCase();
+      let altimeter = numberOrNull(els.altimeter.value);
+      const warnings = [];
+      if (altimeter != null && altimeter > 40) {
+        warnings.push("Enter the altimeter in inches of mercury, for example 29.92.");
+        altimeter = null;
+      }
+      const oat = numberOrNull(els.oat.value);
+      if (oat != null && oat > 60) warnings.push("Temperature should be degrees Celsius.");
+      return {
+        warnings: warnings,
+        input: {
+          elevationFt: numberOrNull(els.elev.value),
+          altimeterInHg: altimeter,
+          oatC: oat != null && oat > 60 ? null : oat,
+          windDir: windText === "VRB" ? null : numberOrNull(windText),
+          windVariable: windText === "VRB",
+          windSpeedKt: numberOrNull(els.windSpd.value),
+          gustKt: numberOrNull(els.gust.value),
+          runwayHeading: numberOrNull(els.heading.value),
+          magVarEast: airportState.fetchedIdent && airportState.fetchedIdent === els.ident.value.trim().toUpperCase()
+            ? airportState.magVarEast
+            : null,
+          surface: surface(),
+          weightLb: numberOrNull(els.weight.value),
+          flapsUp: flapsUp()
+        }
+      };
+    }
+
+    function render() {
+      const reading = readInput();
+      const result = performance(reading.input);
+      els.pa.textContent = result.pressureAlt == null ? "—" : feetText(result.pressureAlt);
+      els.da.textContent = result.densityAlt == null ? "—" : feetText(result.densityAlt);
+      els.windOut.textContent = windSentence(result.wind, reading.input);
+      paintDistance(result.takeoff, els.toGr, els.toTot, els.toMeta, takeoffSpeed(result.takeoff));
+      paintClimb(result.climb);
+      paintDistance(result.landing, els.ldGr, els.ldTot, els.ldMeta, result.landing.available ? result.landing.speed + " KIAS at 50 ft." : "");
+      const notes = reading.warnings.slice();
+      [result.takeoff, result.climb, result.landing].forEach((section) => {
+        (section.notes || []).forEach((note) => notes.push(note));
+      });
+      if (result.wind && result.wind.text) result.wind.text.forEach((note) => notes.push(note));
+      els.notes.replaceChildren();
+      notes.forEach((note) => {
+        const item = document.createElement("li");
+        item.textContent = note;
+        els.notes.appendChild(item);
+      });
+    }
+
+    function takeoffSpeed(section) {
+      if (!section.available) return "";
+      return "Liftoff " + section.liftoff + " KIAS, 50 ft " + section.over50 + " KIAS.";
+    }
+
+    function paintDistance(section, groundEl, totalEl, metaEl, extra) {
+      if (!section.available) {
+        groundEl.textContent = "—";
+        totalEl.textContent = "—";
+        metaEl.textContent = section.reason || "";
+        metaEl.className = "reason";
+        return;
+      }
+      groundEl.textContent = feetText(section.ground);
+      totalEl.textContent = feetText(section.total);
+      metaEl.textContent = extra || "";
+      metaEl.className = "";
+    }
+
+    function paintClimb(section) {
+      if (!section.available) {
+        els.clFpm.textContent = "—";
+        els.clKias.textContent = section.kias == null ? "—" : section.kias + " KIAS";
+        els.clMeta.textContent = section.reason || "";
+        els.clMeta.className = "reason";
+        return;
+      }
+      els.clFpm.textContent = section.fpm.toLocaleString("en-US") + " fpm";
+      els.clKias.textContent = section.kias + " KIAS";
+      els.clMeta.textContent = "";
+      els.clMeta.className = "";
+    }
+
+    function windSentence(wind, input) {
+      if (!wind || wind.headwind == null) {
+        return (wind && wind.text && wind.text[0]) || "Enter the wind and a runway heading.";
+      }
+      let sentence = headText(wind.headwind) + ", " + sideText(wind.crosswind) + ".";
+      if (wind.gustCrosswind != null) {
+        sentence += " Gust " + headText(wind.gustHeadwind).toLowerCase() + ", " + sideText(wind.gustCrosswind) + ". Gusts are not used in the chart distances.";
+      }
+      if (!wind.variationApplied && input.magVarEast == null && input.windSpeedKt > 0) {
+        sentence += " Variation was not applied.";
+      }
+      return sentence;
+    }
+
+    function showBanner(text) {
+      els.banner.hidden = !text;
+      els.banner.textContent = text || "";
+    }
+
+    function save() {
+      if (!saveReady) return;
+      const state = {
+        ident: els.ident.value,
+        elev: els.elev.value,
+        altimeter: els.altimeter.value,
+        oat: els.oat.value,
+        windDir: els.windDir.value,
+        windSpd: els.windSpd.value,
+        gust: els.gust.value,
+        heading: els.heading.value,
+        surface: surface(),
+        weight: els.weight.value,
+        flapsUp: flapsUp(),
+        station: els.station.textContent,
+        raw: els.raw.textContent,
+        banner: els.banner.hidden ? "" : els.banner.textContent,
+        magVarEast: airportState.magVarEast,
+        runways: airportState.runways,
+        fetchedIdent: airportState.fetchedIdent
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function restore() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const state = JSON.parse(raw);
+        els.ident.value = state.ident || "";
+        els.elev.value = state.elev || "";
+        els.altimeter.value = state.altimeter || "";
+        els.oat.value = state.oat || "";
+        els.windDir.value = state.windDir || "";
+        els.windSpd.value = state.windSpd || "";
+        els.gust.value = state.gust || "";
+        els.heading.value = state.heading || "";
+        els.weight.value = state.weight || "3600";
+        setPressed(els.paved, state.surface !== "grass");
+        setPressed(els.grass, state.surface === "grass");
+        setPressed(els.flapsFull, !state.flapsUp);
+        setPressed(els.flapsUp, !!state.flapsUp);
+        els.station.textContent = state.station || "";
+        els.raw.textContent = state.raw || "";
+        showBanner(state.banner || "");
+        airportState = {
+          magVarEast: state.magVarEast == null ? null : state.magVarEast,
+          runways: Array.isArray(state.runways) ? state.runways : [],
+          fetchedIdent: state.fetchedIdent || ""
+        };
+        fillRunways(airportState.runways, state.heading);
+      } catch (error) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+
+    function fillRunways(ends, selectedHeading) {
+      els.runway.replaceChildren();
+      const custom = document.createElement("option");
+      custom.value = "";
+      custom.textContent = ends.length ? "Type a heading" : "No runway list";
+      els.runway.appendChild(custom);
+      ends.forEach((end) => {
+        const option = document.createElement("option");
+        option.value = String(end.heading);
+        option.textContent = end.id + " · " + end.heading + "°";
+        els.runway.appendChild(option);
+      });
+      if (selectedHeading) {
+        const match = Array.from(els.runway.options).find((option) => option.value === String(selectedHeading));
+        els.runway.value = match ? match.value : "";
+      }
+    }
+
+    function metersToFeet(meters) {
+      return Math.round(Number(meters) * 3.280839895);
+    }
+
+    function hpaToInHg(hpa) {
+      return (Math.round(Number(hpa) * 0.029529983071445 * 100) / 100).toFixed(2);
+    }
+
+    function parseMagdec(text) {
+      if (!text) return null;
+      const match = String(text).trim().toUpperCase().match(/(\d+(?:\.\d+)?)\s*([EW])/);
+      if (!match) return null;
+      const degrees = Number(match[1]);
+      return match[2] === "E" ? degrees : -degrees;
+    }
+
+    function runwayEnds(runways) {
+      if (!Array.isArray(runways)) return [];
+      const ends = [];
+      runways.forEach((runway) => {
+        const parts = String(runway.id || "").split("/");
+        const alignment = Number(runway.alignment);
+        const first = Number.isFinite(alignment) ? heading360(alignment) : headingFromIdent(parts[0]);
+        if (parts[0] && first) ends.push({ id: parts[0], heading: first });
+        if (parts[1]) {
+          const second = Number.isFinite(alignment) ? heading360(alignment + 180) : headingFromIdent(parts[1]);
+          if (second) ends.push({ id: parts[1], heading: second });
+        }
+      });
+      return ends;
+    }
+
+    function headingFromIdent(ident) {
+      const match = String(ident || "").match(/^(\d{2})/);
+      if (!match) return null;
+      const heading = Number(match[1]) * 10;
+      return heading === 0 ? null : heading;
+    }
+
+    function candidateIds(raw) {
+      const id = raw.trim().toUpperCase();
+      const ids = [id];
+      if (/^[A-Z0-9]{3}$/.test(id)) ids.push("K" + id);
+      return ids;
+    }
+
+    async function fetchJson(url, accept) {
+      const response = await fetch(url, { headers: { Accept: accept || "application/json" } });
+      if (!response.ok) {
+        const error = new Error("HTTP " + response.status);
+        error.status = response.status;
+        throw error;
+      }
+      return response.json();
+    }
+
+    async function loadAwc(id) {
+      const metarUrl = "https://aviationweather.gov/api/data/metar?ids=" + encodeURIComponent(id) + "&format=json";
+      const airportUrl = "https://aviationweather.gov/api/data/airport?ids=" + encodeURIComponent(id) + "&format=json";
+      const [metarResult, airportResult] = await Promise.allSettled([fetchJson(metarUrl), fetchJson(airportUrl)]);
+      if (metarResult.status === "rejected" && airportResult.status === "rejected") throw metarResult.reason;
+      const metar = metarResult.status === "fulfilled" && Array.isArray(metarResult.value) ? metarResult.value[0] : null;
+      const airport = airportResult.status === "fulfilled" && Array.isArray(airportResult.value) ? airportResult.value[0] : null;
+      if (!metar && !airport) return null;
+      return { metar: metar, airport: airport, id: id };
+    }
+
+    function applyAwc(pack) {
+      const metar = pack.metar || {};
+      const airport = pack.airport || {};
+      const elevMeters = airport.elev != null && airport.elev !== "" ? airport.elev : metar.elev;
+      if (elevMeters != null && elevMeters !== "") els.elev.value = String(metersToFeet(elevMeters));
+      if (metar.temp != null) els.oat.value = String(Math.round(Number(metar.temp) * 10) / 10);
+      if (metar.altim != null) els.altimeter.value = hpaToInHg(metar.altim);
+      if (metar.wdir === "VRB") els.windDir.value = "VRB";
+      else if (metar.wdir != null) els.windDir.value = String(metar.wdir);
+      if (metar.wspd != null) els.windSpd.value = String(metar.wspd);
+      els.gust.value = metar.wgst != null ? String(metar.wgst) : "";
+      els.station.textContent = titleCase(airport.name || metar.name || pack.id);
+      els.raw.textContent = metar.rawOb || "";
+      const ends = runwayEnds(airport.runways);
+      const previousHeading = els.heading.value;
+      const identChanged = airportState.fetchedIdent !== pack.id;
+      airportState = {
+        magVarEast: parseMagdec(airport.magdec),
+        runways: ends,
+        fetchedIdent: pack.id
+      };
+      els.ident.value = pack.id;
+      const heading = !identChanged && previousHeading ? previousHeading : (ends[0] ? String(ends[0].heading) : previousHeading);
+      if (ends.length && (identChanged || !previousHeading)) els.heading.value = String(ends[0].heading);
+      fillRunways(ends, els.heading.value || heading);
+      const observed = metar.obsTime ? new Date(metar.obsTime * 1000).toLocaleString() : "";
+      showBanner(observed ? "Aviation Weather Center observation " + observed + "." : "Aviation Weather Center.");
+    }
+
+    function titleCase(text) {
+      return String(text || "").toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    }
+
+    function nwsNumber(obj, kind) {
+      if (!obj || obj.value == null || !Number.isFinite(Number(obj.value))) return null;
+      const value = Number(obj.value);
+      const unit = String(obj.unitCode || "");
+      if (kind === "speed") {
+        if (unit.includes("km_h")) return value / 1.852;
+        if (unit.includes("m_s")) return value * 1.943844;
+        if (unit.includes("kt")) return value;
+        return null;
+      }
+      if (kind === "pressure") {
+        if (unit.includes("Pa")) return value / 3386.389;
+        return null;
+      }
+      if (kind === "temp") return value;
+      if (kind === "meters" && (unit === "wmoUnit:m" || unit.endsWith(":m"))) return value;
+      return null;
+    }
+
+    async function loadNws(id) {
+      const observation = await fetchJson(
+        "https://api.weather.gov/stations/" + encodeURIComponent(id) + "/observations/latest",
+        "application/geo+json"
+      );
+      let station = null;
+      try {
+        station = await fetchJson("https://api.weather.gov/stations/" + encodeURIComponent(id), "application/geo+json");
+      } catch (error) {
+        station = null;
+      }
+      return { observation: observation, station: station, id: id };
+    }
+
+    function applyNws(pack) {
+      const props = (pack.observation && pack.observation.properties) || {};
+      const station = (pack.station && pack.station.properties) || {};
+      const elevMeters = nwsNumber(props.elevation, "meters");
+      const stationMeters = nwsNumber(station.elevation, "meters");
+      const meters = elevMeters != null ? elevMeters : stationMeters;
+      if (meters != null) els.elev.value = String(metersToFeet(meters));
+      const temp = nwsNumber(props.temperature, "temp");
+      if (temp != null) els.oat.value = String(Math.round(temp * 10) / 10);
+      const altimeter = nwsNumber(props.barometricPressure, "pressure");
+      if (altimeter != null) els.altimeter.value = (Math.round(altimeter * 100) / 100).toFixed(2);
+      const speed = nwsNumber(props.windSpeed, "speed");
+      const direction = props.windDirection ? props.windDirection.value : null;
+      if (direction == null && speed > 0) els.windDir.value = "VRB";
+      else if (direction != null) els.windDir.value = String(Math.round(direction));
+      if (speed != null) els.windSpd.value = String(Math.round(speed));
+      const gust = nwsNumber(props.windGust, "speed");
+      els.gust.value = gust != null ? String(Math.round(gust)) : "";
+      els.station.textContent = station.name || pack.id;
+      els.raw.textContent = props.rawMessage || "";
+      airportState = { magVarEast: null, runways: [], fetchedIdent: pack.id };
+      els.ident.value = pack.id;
+      fillRunways([], els.heading.value);
+      const observed = props.timestamp ? new Date(props.timestamp).toLocaleString() : "";
+      showBanner("Aviation Weather Center did not answer this browser. Weather is the National Weather Service observation" + (observed ? " " + observed : "") + ". Enter the runway heading. Variation was not applied.");
+    }
+
+    async function fetchWeather() {
+      const ident = els.ident.value.trim().toUpperCase();
+      if (!/^[A-Z0-9]{3,4}$/.test(ident)) {
+        showBanner("Enter a 3- or 4-character airport code.");
+        return;
+      }
+      els.fetchBtn.disabled = true;
+      els.fetchBtn.textContent = "Fetching…";
+      const ids = candidateIds(ident);
+      let awcError = null;
+      try {
+        for (let index = 0; index < ids.length; index += 1) {
+          try {
+            const pack = await loadAwc(ids[index]);
+            if (pack) {
+              applyAwc(pack);
+              render();
+              save();
+              return;
+            }
+          } catch (error) {
+            awcError = error;
+            break;
+          }
+        }
+        if (!awcError) {
+          showBanner("No weather was published for " + ident + ".");
+          return;
+        }
+        for (let index = 0; index < ids.length; index += 1) {
+          try {
+            const pack = await loadNws(ids[index]);
+            applyNws(pack);
+            render();
+            save();
+            return;
+          } catch (error) {
+            awcError = error;
+          }
+        }
+        showBanner(savedWeatherMessage());
+      } finally {
+        els.fetchBtn.disabled = false;
+        els.fetchBtn.textContent = "Get weather";
+      }
+    }
+
+    function savedWeatherMessage() {
+      if (els.elev.value || els.oat.value || els.raw.textContent) {
+        return "Could not refresh weather. The numbers below are the last ones saved on this device.";
+      }
+      return "Could not load weather. Enter the elevation, altimeter, temperature, and wind below.";
+    }
+
+    function bind() {
+      ["ident", "elev", "altimeter", "oat", "wind-dir", "wind-spd", "gust", "heading", "weight"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", () => {
+          if (id === "heading") els.runway.value = "";
+          if (id === "ident") {
+            /* Variation belongs to the last airport that was fetched. */
+          }
+          render();
+          save();
+        });
+      });
+      els.ident.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          fetchWeather();
+        }
+      });
+      els.fetchBtn.addEventListener("click", fetchWeather);
+      els.runway.addEventListener("change", () => {
+        if (els.runway.value) els.heading.value = els.runway.value;
+        render();
+        save();
+      });
+      [[els.paved, els.grass], [els.flapsFull, els.flapsUp]].forEach((pair) => {
+        pair.forEach((button) => {
+          button.addEventListener("click", () => {
+            setPressed(pair[0], button === pair[0]);
+            setPressed(pair[1], button === pair[1]);
+            render();
+            save();
+          });
+        });
+      });
+      window.addEventListener("online", () => { document.body.dataset.offline = "false"; });
+      window.addEventListener("offline", () => { document.body.dataset.offline = "true"; });
+      document.body.dataset.offline = navigator.onLine ? "false" : "true";
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        installEvent = event;
+        els.installBtn.hidden = false;
+      });
+      els.installBtn.addEventListener("click", async () => {
+        if (!installEvent) return;
+        installEvent.prompt();
+        await installEvent.userChoice;
+        installEvent = null;
+        els.installBtn.hidden = true;
+      });
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./service-worker.js");
+        });
+      }
+    }
+
+    globalThis.T206 = { performance: performance, selfCheck: selfCheck };
+
+    if (typeof document !== "undefined" && document.getElementById("ident")) {
+      restore();
+      saveReady = true;
+      bind();
+      render();
+    }
+  </script>
+</body>
+</html>

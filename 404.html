@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>T206 Performance</title>
+  <script>
+    var parts = location.pathname.split("/").filter(Boolean);
+    var root = location.hostname.endsWith(".github.io") && parts.length
+      ? "/" + parts[0] + "/"
+      : "/";
+    location.replace(root);
+  </script>
+</head>
+<body>
+  <p><a href="./index.html">T206 Performance</a></p>
+</body>
+</html>
