@@ -1057,41 +1057,6 @@
       return Math.round(Number(meters) * 3.280839895);
     }
 
-    function hpaToInHg(hpa) {
-      return (Math.round(Number(hpa) * 0.029529983071445 * 100) / 100).toFixed(2);
-    }
-
-    function parseMagdec(text) {
-      if (!text) return null;
-      const match = String(text).trim().toUpperCase().match(/(\d+(?:\.\d+)?)\s*([EW])/);
-      if (!match) return null;
-      const degrees = Number(match[1]);
-      return match[2] === "E" ? degrees : -degrees;
-    }
-
-    function runwayEnds(runways) {
-      if (!Array.isArray(runways)) return [];
-      const ends = [];
-      runways.forEach((runway) => {
-        const parts = String(runway.id || "").split("/");
-        const alignment = Number(runway.alignment);
-        const first = Number.isFinite(alignment) ? heading360(alignment) : headingFromIdent(parts[0]);
-        if (parts[0] && first) ends.push({ id: parts[0], heading: first });
-        if (parts[1]) {
-          const second = Number.isFinite(alignment) ? heading360(alignment + 180) : headingFromIdent(parts[1]);
-          if (second) ends.push({ id: parts[1], heading: second });
-        }
-      });
-      return ends;
-    }
-
-    function headingFromIdent(ident) {
-      const match = String(ident || "").match(/^(\d{2})/);
-      if (!match) return null;
-      const heading = Number(match[1]) * 10;
-      return heading === 0 ? null : heading;
-    }
-
     function candidateIds(raw) {
       const id = raw.trim().toUpperCase();
       const ids = [id];
@@ -1107,63 +1072,6 @@
         throw error;
       }
       return response.json();
-    }
-
-    /* The weather center does not allow a browser page to read its API directly. */
-    async function fetchAwcJson(url) {
-      try {
-        return await fetchJson(url);
-      } catch (error) {
-        if (error && error.status) throw error;
-        const relay = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-        const response = await fetch(relay);
-        if (!response.ok) throw error;
-        return response.json();
-      }
-    }
-
-    async function loadAwc(id) {
-      const metarUrl = "https://aviationweather.gov/api/data/metar?ids=" + encodeURIComponent(id) + "&format=json";
-      const airportUrl = "https://aviationweather.gov/api/data/airport?ids=" + encodeURIComponent(id) + "&format=json";
-      const [metarResult, airportResult] = await Promise.allSettled([fetchAwcJson(metarUrl), fetchAwcJson(airportUrl)]);
-      if (metarResult.status === "rejected" && airportResult.status === "rejected") throw metarResult.reason;
-      const metar = metarResult.status === "fulfilled" && Array.isArray(metarResult.value) ? metarResult.value[0] : null;
-      const airport = airportResult.status === "fulfilled" && Array.isArray(airportResult.value) ? airportResult.value[0] : null;
-      if (!metar && !airport) return null;
-      return { metar: metar, airport: airport, id: id };
-    }
-
-    function applyAwc(pack) {
-      const metar = pack.metar || {};
-      const airport = pack.airport || {};
-      const elevMeters = airport.elev != null && airport.elev !== "" ? airport.elev : metar.elev;
-      if (elevMeters != null && elevMeters !== "") els.elev.value = String(metersToFeet(elevMeters));
-      if (metar.temp != null) els.oat.value = String(Math.round(Number(metar.temp) * 10) / 10);
-      if (metar.altim != null) els.altimeter.value = hpaToInHg(metar.altim);
-      if (metar.wdir === "VRB") els.windDir.value = "VRB";
-      else if (metar.wdir != null) els.windDir.value = String(metar.wdir);
-      if (metar.wspd != null) els.windSpd.value = String(metar.wspd);
-      els.gust.value = metar.wgst != null ? String(metar.wgst) : "";
-      els.station.textContent = titleCase(airport.name || metar.name || pack.id);
-      els.raw.textContent = metar.rawOb || "";
-      const ends = runwayEnds(airport.runways);
-      const previousHeading = els.heading.value;
-      const identChanged = airportState.fetchedIdent !== pack.id;
-      airportState = {
-        magVarEast: parseMagdec(airport.magdec),
-        runways: ends,
-        fetchedIdent: pack.id
-      };
-      els.ident.value = pack.id;
-      const heading = !identChanged && previousHeading ? previousHeading : (ends[0] ? String(ends[0].heading) : previousHeading);
-      if (ends.length && (identChanged || !previousHeading)) els.heading.value = String(ends[0].heading);
-      fillRunways(ends, els.heading.value || heading);
-      const observed = metar.obsTime ? new Date(metar.obsTime * 1000).toLocaleString() : "";
-      showBanner(observed ? "Aviation Weather Center observation " + observed + "." : "Aviation Weather Center.");
-    }
-
-    function titleCase(text) {
-      return String(text || "").toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
     }
 
     function nwsNumber(obj, kind) {
@@ -1185,18 +1093,42 @@
       return null;
     }
 
-    async function loadNws(id) {
-      const observation = await fetchJson(
-        "https://api.weather.gov/stations/" + encodeURIComponent(id) + "/observations/latest",
-        "application/geo+json"
-      );
-      let station = null;
+    function airfieldLocalTime(iso, timeZone) {
+      if (!iso) return "";
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return "";
       try {
-        station = await fetchJson("https://api.weather.gov/stations/" + encodeURIComponent(id), "application/geo+json");
+        if (timeZone) {
+          const formatted = new Intl.DateTimeFormat("en-US", {
+            timeZone: timeZone,
+            year: "numeric",
+            month: "numeric",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            timeZoneName: "short"
+          }).format(date);
+          return formatted + ", local time at the airfield";
+        }
       } catch (error) {
-        station = null;
+        return date.toLocaleString();
       }
-      return { observation: observation, station: station, id: id };
+      return date.toLocaleString();
+    }
+
+    async function loadNws(id) {
+      const stationUrl = "https://api.weather.gov/stations/" + encodeURIComponent(id);
+      const observationUrl = stationUrl + "/observations/latest";
+      const [observationResult, stationResult] = await Promise.allSettled([
+        fetchJson(observationUrl, "application/geo+json"),
+        fetchJson(stationUrl, "application/geo+json")
+      ]);
+      if (observationResult.status === "rejected") throw observationResult.reason;
+      return {
+        observation: observationResult.value,
+        station: stationResult.status === "fulfilled" ? stationResult.value : null,
+        id: id
+      };
     }
 
     function applyNws(pack) {
@@ -1222,8 +1154,10 @@
       airportState = { magVarEast: null, runways: [], fetchedIdent: pack.id };
       els.ident.value = pack.id;
       fillRunways([], els.heading.value);
-      const observed = props.timestamp ? new Date(props.timestamp).toLocaleString() : "";
-      showBanner("Aviation Weather Center did not answer this browser. Weather is the National Weather Service observation" + (observed ? " " + observed : "") + ". Enter the runway heading. Variation was not applied.");
+      const observed = airfieldLocalTime(props.timestamp, station.timeZone);
+      showBanner(observed
+        ? "National Weather Service observation " + observed + "."
+        : "National Weather Service observation.");
     }
 
     async function fetchWeather() {
@@ -1235,26 +1169,8 @@
       els.fetchBtn.disabled = true;
       els.fetchBtn.textContent = "Fetching…";
       const ids = candidateIds(ident);
-      let awcError = null;
+      let lastError = null;
       try {
-        for (let index = 0; index < ids.length; index += 1) {
-          try {
-            const pack = await loadAwc(ids[index]);
-            if (pack) {
-              applyAwc(pack);
-              render();
-              save();
-              return;
-            }
-          } catch (error) {
-            awcError = error;
-            break;
-          }
-        }
-        if (!awcError) {
-          showBanner("No weather was published for " + ident + ".");
-          return;
-        }
         for (let index = 0; index < ids.length; index += 1) {
           try {
             const pack = await loadNws(ids[index]);
@@ -1263,10 +1179,14 @@
             save();
             return;
           } catch (error) {
-            awcError = error;
+            lastError = error;
           }
         }
-        showBanner(savedWeatherMessage());
+        if (lastError && lastError.status === 404) {
+          showBanner("No National Weather Service observation was published for " + ident + ".");
+        } else {
+          showBanner(savedWeatherMessage());
+        }
       } finally {
         els.fetchBtn.disabled = false;
         els.fetchBtn.textContent = "Get weather";
