@@ -1,5 +1,5 @@
 /* Cache-first for this app folder only. Weather requests stay on the network. */
-const CACHE = "t206-perf-v1";
+const CACHE = "t206-perf-v2";
 
 function asset(path) {
   return new URL(path, self.location).href;
@@ -32,6 +32,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith("/service-worker.js")) return;
 
   event.respondWith((async () => {
     const cached = await caches.match(request);

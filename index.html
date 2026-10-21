@@ -1109,10 +1109,23 @@
       return response.json();
     }
 
+    /* The weather center does not allow a browser page to read its API directly. */
+    async function fetchAwcJson(url) {
+      try {
+        return await fetchJson(url);
+      } catch (error) {
+        if (error && error.status) throw error;
+        const relay = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+        const response = await fetch(relay);
+        if (!response.ok) throw error;
+        return response.json();
+      }
+    }
+
     async function loadAwc(id) {
       const metarUrl = "https://aviationweather.gov/api/data/metar?ids=" + encodeURIComponent(id) + "&format=json";
       const airportUrl = "https://aviationweather.gov/api/data/airport?ids=" + encodeURIComponent(id) + "&format=json";
-      const [metarResult, airportResult] = await Promise.allSettled([fetchJson(metarUrl), fetchJson(airportUrl)]);
+      const [metarResult, airportResult] = await Promise.allSettled([fetchAwcJson(metarUrl), fetchAwcJson(airportUrl)]);
       if (metarResult.status === "rejected" && airportResult.status === "rejected") throw metarResult.reason;
       const metar = metarResult.status === "fulfilled" && Array.isArray(metarResult.value) ? metarResult.value[0] : null;
       const airport = airportResult.status === "fulfilled" && Array.isArray(airportResult.value) ? airportResult.value[0] : null;
@@ -1316,6 +1329,10 @@
         els.installBtn.hidden = true;
       });
       if ("serviceWorker" in navigator) {
+        const hadController = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (hadController) window.location.reload();
+        });
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("./service-worker.js");
         });
