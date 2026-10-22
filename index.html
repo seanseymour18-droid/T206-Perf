@@ -128,8 +128,10 @@
       letter-spacing: -0.03em;
     }
     .block { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+    .block-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.7rem; }
     .block h3 { margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
     .block p { margin: 0.35rem 0 0; }
+    .block .conditions { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
     .reason { color: var(--warn); font-weight: 650; }
     ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
     li { margin: 0.2rem 0; }
@@ -237,7 +239,10 @@
         <p id="wind-out">Enter the wind and a runway heading.</p>
       </div>
       <div class="block">
-        <h3>Takeoff</h3>
+        <div class="block-head">
+          <h3>Takeoff</h3>
+          <p class="conditions">Flaps 20°, 2500 RPM, 39 in Hg, mixture 34 GPH before brake release, cowl flaps open.</p>
+        </div>
         <div class="metrics">
           <div class="metric"><span>Ground roll</span><b id="to-gr">—</b></div>
           <div class="metric"><span>Clear 50 ft</span><b id="to-tot">—</b></div>
@@ -263,7 +268,7 @@
       <ul id="notes"></ul>
       <details>
         <summary>Chart conditions</summary>
-        <p>Takeoff is Figure 5-6: flaps 20°, 2500 RPM, 39 in Hg, mixture 34 GPH before brake release, cowl flaps open. Climb is Figure 5-7: flaps up, maximum continuous power. Landing is Figure 5-12 at 3600 lb: flaps full, idle, maximum braking, 64 KIAS at 50 ft. Distances are read from pressure altitude and outside air temperature.</p>
+        <p>Climb is Figure 5-7: flaps up, maximum continuous power. Landing is Figure 5-12 at 3600 lb: flaps full, idle, maximum braking, 64 KIAS at 50 ft. Distances are read from pressure altitude and outside air temperature.</p>
       </details>
     </section>
 
