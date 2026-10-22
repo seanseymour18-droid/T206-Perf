@@ -70,6 +70,7 @@
       border-radius: 12px;
       background: #fff;
     }
+    input[readonly] { background: #f4f7fa; }
     input:focus, select:focus, button:focus-visible {
       outline: 3px solid #9ec3de;
       outline-offset: 1px;
@@ -196,15 +197,13 @@
     <section>
       <h2>Runway and airplane</h2>
       <div class="grid">
-        <div class="span-2">
-          <label for="runway">Runway</label>
-          <select id="runway">
-            <option value="">Type a heading</option>
-          </select>
+        <div>
+          <label for="runway">Enter Runway Number</label>
+          <input id="runway" autocapitalize="characters" autocomplete="off" placeholder="27">
         </div>
         <div>
           <label for="heading">Runway heading (magnetic °)</label>
-          <input id="heading" inputmode="numeric" autocomplete="off" placeholder="270">
+          <input id="heading" readonly tabindex="-1">
         </div>
         <div>
           <label for="weight">Weight (lb)</label>
@@ -724,6 +723,11 @@
       expect("ld total", result.landing.total, 1340);
       expect("pa0", result.pressureAlt, 0);
       expect("da cold", result.densityAlt, -1800);
+      expect("rwy 27", runwayHeadingFromNumber("27"), 270);
+      expect("rwy 04L", runwayHeadingFromNumber("04L"), 40);
+      expect("rwy 36", runwayHeadingFromNumber("36"), 360);
+      expect("rwy 9", runwayHeadingFromNumber("9"), 90);
+      expect("rwy bad", runwayHeadingFromNumber("37"), null);
 
       result = performance(Object.assign({}, base, { oatC: 15 }));
       expect("da standard", result.densityAlt, 0);
@@ -833,7 +837,7 @@
       installBtn: document.getElementById("install-btn")
     };
 
-    let airportState = { magVarEast: null, runways: [], fetchedIdent: "" };
+    let airportState = { magVarEast: null, fetchedIdent: "" };
     let saveReady = false;
     let installEvent = null;
 
@@ -989,6 +993,7 @@
         windDir: els.windDir.value,
         windSpd: els.windSpd.value,
         gust: els.gust.value,
+        runway: els.runway.value,
         heading: els.heading.value,
         surface: surface(),
         weight: els.weight.value,
@@ -997,7 +1002,6 @@
         raw: els.raw.textContent,
         banner: els.banner.hidden ? "" : els.banner.textContent,
         magVarEast: airportState.magVarEast,
-        runways: airportState.runways,
         fetchedIdent: airportState.fetchedIdent
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1015,7 +1019,8 @@
         els.windDir.value = state.windDir || "";
         els.windSpd.value = state.windSpd || "";
         els.gust.value = state.gust || "";
-        els.heading.value = state.heading || "";
+        els.runway.value = state.runway || runwayNumberFromHeading(state.heading);
+        applyRunwayHeading();
         els.weight.value = state.weight || "3600";
         setPressed(els.paved, state.surface !== "grass");
         setPressed(els.grass, state.surface === "grass");
@@ -1026,31 +1031,28 @@
         showBanner(state.banner || "");
         airportState = {
           magVarEast: state.magVarEast == null ? null : state.magVarEast,
-          runways: Array.isArray(state.runways) ? state.runways : [],
           fetchedIdent: state.fetchedIdent || ""
         };
-        fillRunways(airportState.runways, state.heading);
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
 
-    function fillRunways(ends, selectedHeading) {
-      els.runway.replaceChildren();
-      const custom = document.createElement("option");
-      custom.value = "";
-      custom.textContent = ends.length ? "Type a heading" : "No runway list";
-      els.runway.appendChild(custom);
-      ends.forEach((end) => {
-        const option = document.createElement("option");
-        option.value = String(end.heading);
-        option.textContent = end.id + " · " + end.heading + "°";
-        els.runway.appendChild(option);
-      });
-      if (selectedHeading) {
-        const match = Array.from(els.runway.options).find((option) => option.value === String(selectedHeading));
-        els.runway.value = match ? match.value : "";
-      }
+    function runwayHeadingFromNumber(text) {
+      const match = String(text || "").trim().toUpperCase().match(/^0*([1-9]|[1-2][0-9]|3[0-6])\s*([LCR])?$/);
+      if (!match) return null;
+      return Number(match[1]) * 10;
+    }
+
+    function runwayNumberFromHeading(heading) {
+      const degrees = Number(heading);
+      if (!Number.isFinite(degrees) || degrees < 10 || degrees > 360 || degrees % 10 !== 0) return "";
+      return String(degrees === 360 ? 36 : degrees / 10);
+    }
+
+    function applyRunwayHeading() {
+      const heading = runwayHeadingFromNumber(els.runway.value);
+      els.heading.value = heading == null ? "" : String(heading);
     }
 
     function metersToFeet(meters) {
@@ -1151,9 +1153,8 @@
       els.gust.value = gust != null ? String(Math.round(gust)) : "";
       els.station.textContent = station.name || pack.id;
       els.raw.textContent = props.rawMessage || "";
-      airportState = { magVarEast: null, runways: [], fetchedIdent: pack.id };
+      airportState = { magVarEast: null, fetchedIdent: pack.id };
       els.ident.value = pack.id;
-      fillRunways([], els.heading.value);
       const observed = airfieldLocalTime(props.timestamp, station.timeZone);
       showBanner(observed
         ? "National Weather Service observation " + observed + "."
@@ -1201,12 +1202,9 @@
     }
 
     function bind() {
-      ["ident", "elev", "altimeter", "oat", "wind-dir", "wind-spd", "gust", "heading", "weight"].forEach((id) => {
+      ["ident", "elev", "altimeter", "oat", "wind-dir", "wind-spd", "gust", "runway", "weight"].forEach((id) => {
         document.getElementById(id).addEventListener("input", () => {
-          if (id === "heading") els.runway.value = "";
-          if (id === "ident") {
-            /* Variation belongs to the last airport that was fetched. */
-          }
+          if (id === "runway") applyRunwayHeading();
           render();
           save();
         });
@@ -1218,11 +1216,6 @@
         }
       });
       els.fetchBtn.addEventListener("click", fetchWeather);
-      els.runway.addEventListener("change", () => {
-        if (els.runway.value) els.heading.value = els.runway.value;
-        render();
-        save();
-      });
       [[els.paved, els.grass], [els.flapsFull, els.flapsUp]].forEach((pair) => {
         pair.forEach((button) => {
           button.addEventListener("click", () => {
