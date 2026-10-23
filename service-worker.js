@@ -1,5 +1,5 @@
 /* Cache-first for this app folder only. Weather requests stay on the network. */
-const CACHE = "t206-perf-v5";
+const CACHE = "t206-perf-v6";
 
 function asset(path) {
   return new URL(path, self.location).href;

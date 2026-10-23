@@ -1072,7 +1072,7 @@
     }
 
     async function fetchJson(url, accept) {
-      const response = await fetch(url, { headers: { Accept: accept || "application/json" } });
+      const response = await fetch(url, { cache: "no-store", headers: { Accept: accept || "application/json" } });
       if (!response.ok) {
         const error = new Error("HTTP " + response.status);
         error.status = response.status;
@@ -1123,6 +1123,19 @@
       return date.toLocaleString();
     }
 
+    function observationMillis(iso) {
+      const time = new Date(iso || "").getTime();
+      return Number.isNaN(time) ? 0 : time;
+    }
+
+    function iemStationIds(icao) {
+      const ids = [];
+      if (/^K[A-Z0-9]{3}$/.test(icao)) ids.push(icao.slice(1));
+      ids.push(icao);
+      if (icao.length === 4) ids.push(icao.slice(1));
+      return ids.filter((id, index) => id && ids.indexOf(id) === index);
+    }
+
     async function loadNws(id) {
       const stationUrl = "https://api.weather.gov/stations/" + encodeURIComponent(id);
       const observationUrl = stationUrl + "/observations/latest";
@@ -1130,37 +1143,117 @@
         fetchJson(observationUrl, "application/geo+json"),
         fetchJson(stationUrl, "application/geo+json")
       ]);
-      if (observationResult.status === "rejected") throw observationResult.reason;
+      if (observationResult.status === "rejected" && stationResult.status === "rejected") throw observationResult.reason;
       return {
-        observation: observationResult.value,
+        observation: observationResult.status === "fulfilled" ? observationResult.value : null,
         station: stationResult.status === "fulfilled" ? stationResult.value : null,
         id: id
       };
     }
 
-    function applyNws(pack) {
-      const props = (pack.observation && pack.observation.properties) || {};
+    /* The weather.gov observation feed can trail the hourly METAR. This copy is current and readable from the browser. */
+    async function loadIem(icao) {
+      const ids = iemStationIds(icao);
+      for (let index = 0; index < ids.length; index += 1) {
+        const stationId = ids[index];
+        let catalog = null;
+        try {
+          catalog = await fetchJson("https://mesonet.agron.iastate.edu/api/1/station/" + encodeURIComponent(stationId) + ".json");
+        } catch (error) {
+          continue;
+        }
+        const rows = Array.isArray(catalog.data) ? catalog.data : [];
+        const sites = rows.filter((row) => row && row.online !== false && /_(ASOS|AWOS)$/.test(String(row.network || "")));
+        sites.sort((a, b) => Number(!String(a.network).endsWith("_ASOS")) - Number(!String(b.network).endsWith("_ASOS")));
+        if (!sites.length) continue;
+        try {
+          const current = await fetchJson(
+            "https://mesonet.agron.iastate.edu/json/current.py?station=" + encodeURIComponent(sites[0].id) + "&network=" + encodeURIComponent(sites[0].network)
+          );
+          if (!current || !current.last_ob || !current.last_ob.utc_valid) continue;
+          return { ob: current.last_ob, site: sites[0], id: icao };
+        } catch (error) {
+          continue;
+        }
+      }
+      return null;
+    }
+
+    function metarGust(raw) {
+      const match = String(raw || "").match(/\b(?:\d{3}|VRB)\d{2,3}G(\d{2,3})KT\b/);
+      return match ? Number(match[1]) : null;
+    }
+
+    function nwsWeather(pack) {
+      if (!pack || !pack.observation) return null;
+      const props = pack.observation.properties || {};
       const station = (pack.station && pack.station.properties) || {};
       const elevMeters = nwsNumber(props.elevation, "meters");
       const stationMeters = nwsNumber(station.elevation, "meters");
-      const meters = elevMeters != null ? elevMeters : stationMeters;
-      if (meters != null) els.elev.value = String(metersToFeet(meters));
-      const temp = nwsNumber(props.temperature, "temp");
-      if (temp != null) els.oat.value = String(Math.round(temp * 10) / 10);
-      const altimeter = nwsNumber(props.barometricPressure, "pressure");
-      if (altimeter != null) els.altimeter.value = (Math.round(altimeter * 100) / 100).toFixed(2);
       const speed = nwsNumber(props.windSpeed, "speed");
       const direction = props.windDirection ? props.windDirection.value : null;
-      if (direction == null && speed > 0) els.windDir.value = "VRB";
-      else if (direction != null) els.windDir.value = String(Math.round(direction));
-      if (speed != null) els.windSpd.value = String(Math.round(speed));
-      const gust = nwsNumber(props.windGust, "speed");
-      els.gust.value = gust != null ? String(Math.round(gust)) : "";
-      els.station.textContent = station.name || pack.id;
-      els.raw.textContent = props.rawMessage || "";
-      airportState = { magVarEast: null, fetchedIdent: pack.id };
-      els.ident.value = pack.id;
-      const observed = airfieldLocalTime(props.timestamp, station.timeZone);
+      return {
+        id: pack.id,
+        timestamp: props.timestamp || "",
+        timeZone: station.timeZone || "",
+        name: station.name || pack.id,
+        elevMeters: elevMeters != null ? elevMeters : stationMeters,
+        tempC: nwsNumber(props.temperature, "temp"),
+        altimeterInHg: nwsNumber(props.barometricPressure, "pressure"),
+        windDir: direction == null && speed > 0 ? "VRB" : direction,
+        windSpeed: speed,
+        gust: nwsNumber(props.windGust, "speed"),
+        raw: props.rawMessage || ""
+      };
+    }
+
+    function iemWeather(icao, iem, nws) {
+      if (!iem || !iem.ob) return null;
+      const ob = iem.ob;
+      const site = iem.site || {};
+      const station = (nws && nws.station && nws.station.properties) || {};
+      const stationMeters = nwsNumber(station.elevation, "meters");
+      const raw = ob.raw || "";
+      const speed = Number.isFinite(Number(ob["windspeed[kt]"])) ? Number(ob["windspeed[kt]"]) : null;
+      let direction = Number.isFinite(Number(ob["winddirection[deg]"])) ? Number(ob["winddirection[deg]"]) : null;
+      if (/\bVRB\d{2,3}KT\b/.test(raw)) direction = "VRB";
+      const tempF = Number(ob["airtemp[F]"]);
+      const altimeter = Number(ob["altimeter[in]"]);
+      return {
+        id: icao,
+        timestamp: ob.utc_valid,
+        timeZone: station.timeZone || site.tzname || "",
+        name: station.name || site.name || icao,
+        elevMeters: stationMeters != null ? stationMeters : (Number.isFinite(Number(site.elevation)) ? Number(site.elevation) : null),
+        tempC: Number.isFinite(tempF) ? (tempF - 32) * 5 / 9 : null,
+        altimeterInHg: Number.isFinite(altimeter) ? altimeter : null,
+        windDir: direction == null && speed > 0 ? "VRB" : direction,
+        windSpeed: speed,
+        gust: metarGust(raw),
+        raw: raw
+      };
+    }
+
+    function newerWeather(icao, nws, iem) {
+      const fromNws = nwsWeather(nws);
+      const fromIem = iemWeather(icao, iem, nws);
+      if (fromIem && (!fromNws || observationMillis(fromIem.timestamp) >= observationMillis(fromNws.timestamp))) return fromIem;
+      return fromNws;
+    }
+
+    function applyWeather(weather) {
+      if (weather.elevMeters != null) els.elev.value = String(metersToFeet(weather.elevMeters));
+      if (weather.tempC != null) els.oat.value = String(Math.round(weather.tempC * 10) / 10);
+      if (weather.altimeterInHg != null) els.altimeter.value = (Math.round(weather.altimeterInHg * 100) / 100).toFixed(2);
+      if (weather.windDir === "VRB") els.windDir.value = "VRB";
+      else if (weather.windDir != null) els.windDir.value = String(Math.round(weather.windDir));
+      if (weather.windSpeed != null) els.windSpd.value = String(Math.round(weather.windSpeed));
+      els.gust.value = weather.gust != null ? String(Math.round(weather.gust)) : "";
+      els.station.textContent = weather.name || weather.id;
+      els.raw.textContent = weather.raw || "";
+      airportState = { magVarEast: null, fetchedIdent: weather.id };
+      els.ident.value = weather.id;
+      const observed = airfieldLocalTime(weather.timestamp, weather.timeZone);
       showBanner(observed
         ? "National Weather Service observation " + observed + "."
         : "National Weather Service observation.");
@@ -1178,15 +1271,23 @@
       let lastError = null;
       try {
         for (let index = 0; index < ids.length; index += 1) {
-          try {
-            const pack = await loadNws(ids[index]);
-            applyNws(pack);
-            render();
-            save();
-            return;
-          } catch (error) {
-            lastError = error;
+          const id = ids[index];
+          const [nwsResult, iemResult] = await Promise.allSettled([loadNws(id), loadIem(id)]);
+          const nws = nwsResult.status === "fulfilled" ? nwsResult.value : null;
+          const iem = iemResult.status === "fulfilled" ? iemResult.value : null;
+          if (!nws && !iem) {
+            lastError = nwsResult.reason || iemResult.reason;
+            continue;
           }
+          const weather = newerWeather(id, nws, iem);
+          if (!weather) {
+            lastError = { status: 404 };
+            continue;
+          }
+          applyWeather(weather);
+          render();
+          save();
+          return;
         }
         if (lastError && lastError.status === 404) {
           showBanner("No National Weather Service observation was published for " + ident + ".");
